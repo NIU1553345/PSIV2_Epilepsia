@@ -12,8 +12,8 @@ import torch.optim as optim
 # Load data
 #############################################################
 
-patient = load_data_npz("C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb01_seizure_EEGwindow_1.npz")['EEG_win']
-metadata = load_data_parquet("C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb01_seizure_metadata_1.parquet")
+patient = load_data_npz("C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb02_seizure_EEGwindow_1.npz")['EEG_win']
+metadata = load_data_parquet("C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb02_seizure_metadata_1.parquet")
 
 #Transoforma els dataframe en tensors
 tensor_patient = torch.from_numpy(patient.astype(np.float32))
@@ -42,100 +42,104 @@ print(patient_average.shape)
 #############################################################
 
 class CNN1D(nn.Module):
-    def __init__(self):
+    def __init__(self, input_length, num_classes=2):
         super(CNN1D, self).__init__()
         
-        self.conv1 = nn.Conv1d(1, 16, kernel_size=3, stride=1)  
-        self.relu1 = nn.ReLU()
-        self.pool1 = nn.MaxPool1d(kernel_size=4, stride=4)
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(1, 16, kernel_size=8, stride=2, padding=3),   # 16 filtros @ T/4
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=2)       # T/8
+        )
+        
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(16, 32, kernel_size=8, stride=2, padding=3),  # 32 filtros @ T/16
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=2)       # T/32
+        )
 
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(32, 64, kernel_size=4, stride=1, padding=1),  # 64 filtros @ T/64
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=2)       # T/128
+        )
 
-        self.conv2 = nn.Conv1d(16, 32, kernel_size=3, stride=1)  
-        self.relu2 = nn.ReLU()
-        self.pool1 = nn.MaxPool1d(kernel_size=4, stride=4)
+        #Per aconseguir el output length sha de fer aquest calcul per cada capa de convolucio
+        #otuput_length = (input_length + 2*padding - kernel_size)/ stride + 1
 
-        self.conv3 = nn.Conv1d(32, 64, kernel_size=3, stride=1)  
-        self.relu3 = nn.ReLU()
-        self.pool1 = nn.MaxPool1d(kernel_size=4, stride=4)
-
-        self.fc = nn.Linear(64, 1)
+        # Flatten intermedio para el FC de 128 neuronas
+        self.fc1 = nn.Linear(64*3, 128)         #Average o Weighted
+        # self.fc1 = nn.Linear(64*83, 128)      #Flatten
+        
+        # Segundo Flatten para clasificación final
+        self.fc2 = nn.Linear(128, num_classes)
 
     def forward(self, x):
-        x = self.pool1(self.relu1(self.conv1(x)))  
-
-        print(f"Forma de x despres de la 1ra capa: {x.shape}")
-
-        x = self.pool1(self.relu2(self.conv2(x)))  
-
-        print(f"Forma de x despres de la 2na capa: {x.shape}")
-
-        x = self.pool1(self.relu3(self.conv3(x)))  
-
-        print(f"Forma de x despres de la 3ra capa: {x.shape}")
-
-        x = x.view(x.size(0), -1)  
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
         
-        print(f"Forma de x antes de la capa fully connected: {x.shape}")
+        # Primer flatten para salida al FC intermedio
+        x_flat1 = x.view(x.size(0), -1)  # (batch_size, features)
+        x_128 = self.fc1(x_flat1)
+        
+        # Segundo flatten desde la salida anterior
+        output = self.fc2(x_128)
+        return x_128, output
 
-        x = self.fc(x)  
-        x = torch.sigmoid(x)
-
-        return x
-    
-dataset = TensorDataset(patient_average, tensor_class)
+# Creación del dataset
+dataset = TensorDataset(patient_average, tensor_class)  # tensor_class debe tener valores 0 o 1
 train_size = int(0.8 * len(dataset)) 
 test_size = len(dataset) - train_size
 train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)  # Batch size ajustado
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-model = CNN1D()
-criterion = nn.BCELoss()
+# Inicializa el modelo con longitud de entrada
+model = CNN1D(input_length=128*21, num_classes=2)  # El modelo implementado previamente
+
+# Definimos la pérdida y el optimizador
+criterion = nn.CrossEntropyLoss()  # Cambiamos BCELoss a CrossEntropyLoss
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
+# Entrenamiento del modelo
 num_epochs = 5
 for epoch in range(num_epochs):
-    model.train() 
+    model.train()
     running_loss = 0.0
 
     for inputs, labels in train_loader:
         optimizer.zero_grad()
-        outputs = model(inputs)  
-        loss = criterion(outputs.squeeze(), labels.squeeze())  
-        loss.backward()  
-        optimizer.step()  
+        
+        # Paso hacia adelante: obtenemos la salida final y la intermedia
+        _, outputs = model(inputs)
+        
+        # Calcula la pérdida (CrossEntropyLoss espera labels de tipo Long)
+        loss = criterion(outputs, labels.long())
+        loss.backward()
+        optimizer.step()
+        
         running_loss += loss.item()
+    
+    print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader):.4f}")
 
-    print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader)}")
-
-model.eval() 
+# Evaluación del modelo
+model.eval()
 correct = 0
 total = 0
 predictions = []
 
-with torch.no_grad(): 
+with torch.no_grad():
     for inputs, labels in test_loader:
-        outputs = model(inputs)
-        predicted = (outputs.squeeze() > 0.5).float() 
+        _, outputs = model(inputs)
+        
+        predicted = torch.argmax(outputs, dim=1)
+        
         total += labels.size(0)
-        correct += (predicted.squeeze() == labels.squeeze()).sum().item()
-        predictions.extend(predicted.squeeze().cpu().numpy())
+        correct += (predicted == labels).sum().item()
+        predictions.extend(predicted.cpu().numpy())
 
 accuracy = correct / total
-print(f"Accuracy en el conjunto de prueba: {accuracy * 100:.2f}%")
+print(f"Accuracy en el test: {accuracy * 100:.2f}%")
 
-# Mostrar las primeras 10 predicciones
-print("Primeras 10 predicciones:", predictions[:10])
-
-                                                        
-
-
-
-
-
-
-
-
-
-
+print("Primeras 50 prediccions:", predictions[:50])
