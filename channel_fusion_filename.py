@@ -165,23 +165,45 @@ for epoch in range(num_epochs):
     
     print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader):.4f}")
 
-# Evaluación del modelo
+
 model.eval()
-correct = 0
+
+
 total = 0
+correct = 0
 predictions = []
+true_labels = []
+
 
 with torch.no_grad():
     for inputs, labels in test_loader:
         _, outputs = model(inputs)
         
+        # Prediccions
         predicted = torch.argmax(outputs, dim=1)
         
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
         predictions.extend(predicted.cpu().numpy())
+        true_labels.extend(labels.cpu().numpy())
 
+# Calculant accuracy
 accuracy = correct / total
 print(f"Accuracy en el test: {accuracy * 100:.2f}%")
+
+# Càlcul de la matriu de confusió
+conf_matrix = confusion_matrix(true_labels, predictions)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+# Càlcul de les mètriques de recall
+
+recall_per_class = precision_recall_fscore_support(true_labels, predictions, average=None)[1]
+
+recall_pos = recall_per_class[1]  # Per la classe 1
+recall_neg = recall_per_class[0]  # Per la classe 0
+
+print(f"Recall Positiu (classe 1): {recall_pos:.2f}")
+print(f"Recall Negatiu (classe 0): {recall_neg:.2f}")
 
 print("Primeras 50 prediccions:", predictions[:50])
