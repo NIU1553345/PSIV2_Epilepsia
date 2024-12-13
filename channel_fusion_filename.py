@@ -8,6 +8,9 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, Subset
 import random
 import torch.optim as optim
+from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
+from sklearn.model_selection import KFold
+
 
 # Read parquet files and return a dataframe
 def load_data_parquet(path):
@@ -21,8 +24,8 @@ def load_data_npz(path):
     return df
 
 # Load data paths
-path_parquet = r'C:\Users\Usuario\OneDrive\Escriptori\UAB\4t\psiv\4-epilepsia\dataset\chb01_seizure_metadata_1.parquet'
-path_npz = r'C:\Users\Usuario\OneDrive\Escriptori\UAB\4t\psiv\4-epilepsia\dataset\chb01_seizure_EEGwindow_1.npz'
+path_parquet = "C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb01_seizure_metadata_1.parquet"
+path_npz = "C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/input/chb01_seizure_EEGwindow_1.npz"
 
 patient = load_data_npz(path_npz)['EEG_win']
 metadata = load_data_parquet(path_parquet)
@@ -115,95 +118,122 @@ for item in f:
 # Divideix els grups en entrenament i test
 group_keys = list(grouped.keys())
 random.shuffle(group_keys)  # Mescla aleatòriament els grups
+print(group_keys)
 
-train_keys = group_keys[:int(0.8 * len(group_keys))]  # 80% per entrenament
-test_keys = group_keys[int(0.8 * len(group_keys)):]  # 20% per test
+kf = KFold(n_splits=len(group_keys), shuffle=True, random_state=42)
+confusion_matrix_global = []
+recalls_pos = []
+recalls_neg = []
 
-# Obtenir els índexs corresponents per cada partició
-train_filenames = [filename for key in train_keys for filename in grouped[key]]
-test_filenames = [filename for key in test_keys for filename in grouped[key]]
 
-train_indices = [i for i, filename in enumerate(metadata['filename']) if filename in train_filenames]
-test_indices = [i for i, filename in enumerate(metadata['filename']) if filename in test_filenames]
+for fold, (train_keys, test_keys) in enumerate(kf.split(group_keys)):
+    train_keys = [group_keys[i] for i in train_keys]
+    test_keys = [group_keys[i] for i in test_keys]
+    print(f"Fold {fold}: Train keys: {train_keys}, Test keys: {test_keys}")
 
-# Crea datasets de train i test
-dataset = TensorDataset(patient_average, tensor_class)  # tensor_class ha de tenir valors 0 o 1
-train_dataset = Subset(dataset, train_indices)
-test_dataset = Subset(dataset, test_indices)
+    # Obtenir els índexs corresponents per cada partició
+    train_filenames = [filename for key in train_keys for filename in grouped[key]]
+    test_filenames = [filename for key in test_keys for filename in grouped[key]]
 
-# Comprova els resultats
-print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
+    train_indices = [i for i, filename in enumerate(metadata['filename']) if filename in train_filenames]
+    test_indices = [i for i, filename in enumerate(metadata['filename']) if filename in test_filenames]
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)  # Batch size ajustat
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    # Crea datasets de train i test
+    dataset = TensorDataset(patient_average , tensor_class)  # tensor_class ha de tenir valors 0 o 1
+    train_dataset = Subset(dataset, train_indices)
+    test_dataset = Subset(dataset, test_indices)
 
-# Inicializa el modelo con longitud de entrada
-model = CNN1D(input_length=128*21, num_classes=2)  # El modelo implementado previamente
 
-# Definimos la pérdida y el optimizador
-criterion = nn.CrossEntropyLoss()  # Cambiamos BCELoss a CrossEntropyLoss
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+    # Comprova els resultats
+    print(f"Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
 
-# Entrenamiento del modelo
-num_epochs = 5
-for epoch in range(num_epochs):
-    model.train()
-    running_loss = 0.0
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)  # Batch size ajustat
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-    for inputs, labels in train_loader:
-        optimizer.zero_grad()
+    # Inicializa el modelo con longitud de entrada
+    model = CNN1D(input_length=128*21, num_classes=2)  # El modelo implementado previamente
+
+    # Definimos la pérdida y el optimizador
+    criterion = nn.CrossEntropyLoss()  # Cambiamos BCELoss a CrossEntropyLoss
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Entrenamiento del modelo
+    num_epochs = 5
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
+            
+            # Paso hacia adelante: obtenemos la salida final y la intermedia
+            _, outputs = model(inputs)
+            
+            # Calcula la pérdida (CrossEntropyLoss espera labels de tipo Long)
+            loss = criterion(outputs, labels.long())
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
         
-        # Paso hacia adelante: obtenemos la salida final y la intermedia
-        _, outputs = model(inputs)
-        
-        # Calcula la pérdida (CrossEntropyLoss espera labels de tipo Long)
-        loss = criterion(outputs, labels.long())
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item()
-    
-    print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader):.4f}")
+        print(f"Epoch {epoch + 1}, Loss: {running_loss / len(train_loader):.4f}")
 
 
-model.eval()
+    model.eval()
 
 
-total = 0
-correct = 0
-predictions = []
-true_labels = []
+    total = 0
+    correct = 0
+    predictions = []
+    true_labels = []
 
 
-with torch.no_grad():
-    for inputs, labels in test_loader:
-        _, outputs = model(inputs)
-        
-        # Prediccions
-        predicted = torch.argmax(outputs, dim=1)
-        
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-        predictions.extend(predicted.cpu().numpy())
-        true_labels.extend(labels.cpu().numpy())
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            _, outputs = model(inputs)
+            
+            # Prediccions
+            predicted = torch.argmax(outputs, dim=1)
+            
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            predictions.extend(predicted.cpu().numpy())
+            true_labels.extend(labels.cpu().numpy())
 
-# Calculant accuracy
-accuracy = correct / total
-print(f"Accuracy en el test: {accuracy * 100:.2f}%")
+    # Calculant accuracy
+    accuracy = correct / total
+    print(f"Accuracy en el test: {accuracy * 100:.2f}%")
 
-# Càlcul de la matriu de confusió
-conf_matrix = confusion_matrix(true_labels, predictions)
-print("Confusion Matrix:")
-print(conf_matrix)
+    # Càlcul de la matriu de confusió
+    conf_matrix = confusion_matrix(true_labels, predictions)
+    confusion_matrix_global.append(conf_matrix)
+    print("Confusion Matrix:")
+    print(conf_matrix)
 
-# Càlcul de les mètriques de recall
+    # Càlcul de les mètriques de recall
 
-recall_per_class = precision_recall_fscore_support(true_labels, predictions, average=None)[1]
+    recall_per_class = precision_recall_fscore_support(true_labels, predictions, average=None)[1]
 
-recall_pos = recall_per_class[1]  # Per la classe 1
-recall_neg = recall_per_class[0]  # Per la classe 0
+    recall_pos = recall_per_class[1]  # Per la classe 1
+    recall_neg = recall_per_class[0]  # Per la classe 0
 
-print(f"Recall Positiu (classe 1): {recall_pos:.2f}")
-print(f"Recall Negatiu (classe 0): {recall_neg:.2f}")
+    recalls_pos.append(recall_pos)
+    recalls_neg.append(recall_neg)
 
-print("Primeras 50 prediccions:", predictions[:50])
+    print(f"Recall Positiu (classe 1): {recall_pos:.2f}")
+    print(f"Recall Negatiu (classe 0): {recall_neg:.2f}")
+
+    print("Primeras 50 prediccions:", predictions[:50])
+
+
+# Càlcul de la matriu de confusió global
+confusion_matrix_global = np.sum(confusion_matrix_global, axis=0)
+print("Confusion Matrix Global:")
+print(confusion_matrix_global)
+
+# Càlcul de les mètriques de recall global
+recall_pos_global = sum(recalls_pos) / len(recalls_pos)
+recall_neg_global = sum(recalls_neg) / len(recalls_neg)
+
+print(f"Recall Positiu Global: {recall_pos_global:.2f}")
+print(f"Recall Negatiu Global: {recall_neg_global:.2f}")
