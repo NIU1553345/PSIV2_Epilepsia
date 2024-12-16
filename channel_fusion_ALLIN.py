@@ -11,6 +11,9 @@ import torch.optim as optim
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 from sklearn.model_selection import KFold
 
+#############################################################
+# Load data functions
+#############################################################
 
 # Read parquet files and return a dataframe
 def load_data_parquet(path, file):
@@ -24,15 +27,6 @@ def load_data_npz(path, file):
     df = np.load(path, allow_pickle=True)
     print(list(df.keys()))
     return df['EEG_win'], num
-
-# Load data paths
-path_directori = "C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/Dataset_petit"
-
-# # Convert the dataframes into tensors
-# tensor_patient = torch.from_numpy(patient.astype(np.float32))
-# print(tensor_patient.shape)
-# tensor_class = torch.tensor(metadata['class'])
-# print(tensor_class)
 
 def processar_dades(path_directori):
     parquet_files = {}
@@ -50,23 +44,6 @@ def processar_dades(path_directori):
 
     return parquet_files, npz_files
 
-
-#############################################################
-# Fusio tensors
-#############################################################
-
-# # Fusio usant concatenation
-# patient_concatenation = tensor_patient.view(tensor_patient.shape[0], tensor_patient.shape[1]*tensor_patient.shape[2]).unsqueeze(1)  # [Nbatch, 1, Nchannels*L]
-# print(patient_concatenation.shape)
-
-# # Fusio usant average
-avg_pool = nn.AvgPool2d((21, 1))
-# patient_average = avg_pool(tensor_patient)  # [Nbatch, 1, L]
-# print(patient_average.shape)
-
-
-#Fusio usant Weighted
-#FER MÉS ENDAVANT
 
 #############################################################
 # Convolutional Unit
@@ -118,24 +95,47 @@ class CNN1D(nn.Module):
         return x_128, output
 
 
-#Guardar en diccionaris cada pacient
+#############################################################
+# Main
+#############################################################
+
+path_directori = "C:/Users/arnau/Desktop/4t Eng/1r Semestre/PSIV 2/Reptes/Epilepsia/Sample of original  EEG Recording-20241205/Dataset_petit"
+
 parquet_pacients, npz_pacients = processar_dades(path_directori)
 
 tensors_train = []
 tensors_test = []
+
+avg_pool = nn.AvgPool2d((21, 1))
+# patient_concatenation = tensor_patient.view(tensor_patient.shape[0], tensor_patient.shape[1]*tensor_patient.shape[2]).unsqueeze(1)  # [Nbatch, 1, Nchannels*L]
+
 
 for num_p, metadata in parquet_pacients.items():
     grouped = metadata.groupby(['filename'])
     ultim = grouped.size().index[-1]
     pacient_average = avg_pool(npz_pacients[num_p])
 
-    train_indices = []
-    test_indices = []
+    positives_test = []
+    positives_train = []
+    negatives_test = []
+    negatives_train = []
     for i, filename in enumerate(metadata['filename']):
         if filename == ultim:
-            test_indices.append(i)
+            if metadata['class'][i] == 1:
+                positives_test.append(i)
+            else:
+                negatives_test.append(i)
         else:
-            train_indices.append(i)
+            if metadata['class'][i] == 1:
+                positives_train.append(i)
+            else:
+                negatives_train.append(i)
+
+    length_train = min(len(positives_train), len(negatives_train))
+    length_test = min(len(positives_test), len(negatives_test))
+    
+    train_indices = positives_train[:length_train] + negatives_train[:length_train]
+    test_indices = positives_test[:length_test] + negatives_test[:length_test]
 
     #Crear 2 tensors per pacient, train con grouped menos el último filename y el test solo con los que tengan el último filename
     tensor_class = torch.tensor(metadata['class'])
@@ -159,7 +159,7 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)  # Batch s
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # Inicializa el modelo con longitud de entrada
-model = CNN1D(input_length=128*21, num_classes=2)  # El modelo implementado previamente
+model = CNN1D(input_length=128, num_classes=2)  # El modelo implementado previamente
 
 # Definimos la pérdida y el optimizador
 criterion = nn.CrossEntropyLoss()  # Cambiamos BCELoss a CrossEntropyLoss
