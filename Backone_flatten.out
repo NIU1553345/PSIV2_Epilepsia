@@ -1,0 +1,61 @@
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+['EEG_win']
+Pacient 08: Train size: 10416, Test size: 3274
+Pacient 18: Train size: 4256, Test size: 720
+Pacient 04: Train size: 2528, Test size: 3456
+Pacient 20: Train size: 3968, Test size: 608
+Pacient 07: Train size: 2880, Test size: 2272
+Pacient 16: Train size: 544, Test size: 432
+Pacient 24: Train size: 6848, Test size: 1072
+Pacient 13: Train size: 3936, Test size: 2944
+Pacient 06: Train size: 2048, Test size: 240
+Pacient 22: Train size: 2080, Test size: 1136
+Pacient 19: Train size: 2448, Test size: 1280
+Pacient 23: Train size: 2832, Test size: 3840
+Pacient 05: Train size: 6992, Test size: 1856
+Pacient 21: Train size: 2944, Test size: 176
+Pacient 15: Train size: 29840, Test size: 1712
+Pacient 17: Train size: 3248, Test size: 1392
+Pacient 01: Train size: 5360, Test size: 1600
+Pacient 11: Train size: 832, Test size: 2046
+Pacient 12: Train size: 12976, Test size: 2416
+Pacient 09: Train size: 3376, Test size: 976
+Pacient 10: Train size: 6192, Test size: 848
+Pacient 03: Train size: 5488, Test size: 832
+Pacient 14: Train size: 2336, Test size: 240
+Pacient 02: Train size: 2576, Test size: 128
+Train size: 126944, Test size: 35496
+Epoch 1, Loss: 0.5520
+Epoch 2, Loss: 0.3028
+Epoch 3, Loss: 0.2276
+Epoch 4, Loss: 0.1935
+Epoch 5, Loss: 0.1688
+Accuracy en el test: 72.46%
+Confusion Matrix:
+[[10258  7490]
+ [ 2284 15464]]
+Recall Positiu (classe 1): 0.87
+Recall Negatiu (classe 0): 0.58
+Primeras 50 prediccions: [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]
