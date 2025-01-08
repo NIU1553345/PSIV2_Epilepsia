@@ -76,7 +76,7 @@ class CNN1D(nn.Module):
 
         # Flatten intermedio para el FC de 128 neuronas
         self.fc1 = nn.Linear(64*3, 128)         #Average o Weighted
-        # self.fc1 = nn.Linear(64*83, 128)      #Flatten
+        #self.fc1 = nn.Linear(64*83, 128)      #Flatten
         
         # Segundo Flatten para clasificación final
         self.fc2 = nn.Linear(128, num_classes)
@@ -107,20 +107,21 @@ tensors_train = []
 tensors_test = []
 
 avg_pool = nn.AvgPool2d((21, 1))
-# patient_concatenation = tensor_patient.view(tensor_patient.shape[0], tensor_patient.shape[1]*tensor_patient.shape[2]).unsqueeze(1)  # [Nbatch, 1, Nchannels*L]
 
 
 for num_p, metadata in parquet_pacients.items():
+    tensor_patient = npz_pacients[num_p]
     grouped = metadata.groupby(['filename'])
-    ultim = grouped.size().index[-1]
-    pacient_average = avg_pool(npz_pacients[num_p])
+    group_test = random.choice(list(grouped.size().index))
+    pacient_average = avg_pool(tensor_patient)
+    #patient_concatenation = tensor_patient.view(tensor_patient.shape[0], tensor_patient.shape[1]*tensor_patient.shape[2]).unsqueeze(1)  # [Nbatch, 1, Nchannels*L]
 
     positives_test = []
     positives_train = []
     negatives_test = []
     negatives_train = []
     for i, filename in enumerate(metadata['filename']):
-        if filename == ultim:
+        if filename == group_test:
             if metadata['class'][i] == 1:
                 positives_test.append(i)
             else:
@@ -141,6 +142,7 @@ for num_p, metadata in parquet_pacients.items():
     tensor_class = torch.tensor(metadata['class'])
     
     dataset = TensorDataset(pacient_average , tensor_class)  # tensor_class ha de tenir valors 0 o 1
+    #dataset = TensorDataset(patient_concatenation , tensor_class)
     train_dataset = Subset(dataset, train_indices)
     test_dataset = Subset(dataset, test_indices)
 
@@ -159,10 +161,10 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)  # Batch s
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 # Inicializa el modelo con longitud de entrada
-model = CNN1D(input_length=128, num_classes=2)  # El modelo implementado previamente
+model = CNN1D(input_length=128, num_classes=2) 
 
 # Definimos la pérdida y el optimizador
-criterion = nn.CrossEntropyLoss()  # Cambiamos BCELoss a CrossEntropyLoss
+criterion = nn.CrossEntropyLoss()  
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Entrenamiento del modelo
