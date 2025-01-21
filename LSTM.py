@@ -77,7 +77,9 @@ def processar_dades(path_directori):
     
     dic_final = {}
     
-    for file in os.listdir(path_directori):
+    for idx, file in enumerate(os.listdir(path_directori)):
+        if idx > 24:
+            break
         file_path = os.path.join(path_directori, file)
         if file_path.endswith(".parquet"):
             df_metadates, num = load_data_parquet(file_path, file)
@@ -98,11 +100,15 @@ def processar_dades(path_directori):
     return dic_final
     
 path_directori = "/export/fhome/maed/EpilepsyDataSet/"
-#path_directori = "/export/fhome/maed06/VirtualEnv/repte4/dataset/"
+
 
 dic = processar_dades(path_directori)
 
+print(dic.keys())
 
+
+    
+    
 y_train=[]
 y_test=[]
 X_train = []
@@ -124,10 +130,7 @@ for pacient,d in dic.items():
         llargades_intervals_train.append(len(d[interval][1]))
 
 
-with open("X_test.pkl", "wb") as file:  
-    pickle.dump(data, file)
-with open("y_test.pkl", "wb") as file:  
-    pickle.dump(data, file)
+
 
 def generar_finestres(llargades_intervals, finestra_size):
     finestres = []
@@ -159,12 +162,10 @@ def generar_finestres(llargades_intervals, finestra_size):
 
     return finestres
 
-window_size = 5
+window_size = 10
 finestres_train = generar_finestres(llargades_intervals_train,window_size)
 finestres_test = generar_finestres(llargades_intervals_test,window_size)
 
-with open("finestres_test.pkl", "wb") as file:  
-    pickle.dump(data, file)
 
 inputmodule_params, net_params, outmodule_params = get_default_hyperparameters()
 model = EpilepsyLSTM(inputmodule_params, net_params, outmodule_params)
@@ -175,22 +176,22 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 # Convert the data to PyTorch tensors
-X_train = np.array(X_train, dtype=np.float32)
-X_tensor = torch.from_numpy(X_train).float().to(DEVICE)
-y_train = np.array(y_train, dtype=np.int64)
-y_tensor = torch.from_numpy(y_train).long().to(DEVICE)
+X_train_model10 = np.array(X_train, dtype=np.float32)
+X_tensor = torch.from_numpy(X_train_model10).float().to(DEVICE)
+y_train_model10 = np.array(y_train, dtype=np.int64)
+y_tensor = torch.from_numpy(y_train_model10).long().to(DEVICE)
 
 
 # Training loop
-n_epochs = 20
-
+n_epochs = 10
+print("model finestres 10")
 
 for epoch in range(n_epochs):
     model.train()
     for start,end in finestres_train:
         batch_X = X_tensor[start:end]
         batch_y = y_tensor[start:end]
-        print(start,end)
+        #print(start,end)
         
         # Forward pass
         outputs = model(batch_X)
@@ -204,7 +205,54 @@ for epoch in range(n_epochs):
     print(f'Epoch [{epoch+1}/{n_epochs}], Loss: {loss.item():.4f}')
 
 
-torch.save(model.state_dict(), "./modelLSTM-windows20epoch5windowsize.pth")
+#torch.save(model.state_dict(), "./meitatLSTM-windows20epoch1000windowsize.pth")
 
 
+total = len(y_test)
+correct = 0
+predictions = []
+true_labels = []
+
+
+
+X_test_model10 = np.array(X_test, dtype=np.float32)
+X_tensor = torch.from_numpy(X_test_model10).float().to(DEVICE)
+y_test_model10 = np.array(y_test, dtype=np.int64)
+y_tensor = torch.from_numpy(y_test_model10).long().to(DEVICE)
+
+with torch.no_grad():
+    for start,end in finestres_test:
+        batch_X = X_tensor[start:end]
+        batch_y = y_tensor[start:end]
+        
+        outputs = model(batch_X)
+        
+        # Prediccions
+        _, predicted = torch.max(outputs, 1)
+        
+        
+        correct += (predicted == batch_y).sum().item()
+        predictions.extend(predicted.cpu().numpy())
+        true_labels.extend(batch_y.cpu().numpy())
+
+# Calculant accuracy
+accuracy = correct / total
+print(f"Accuracy en el test: {accuracy * 100:.2f}%")
+
+
+conf_matrix = confusion_matrix(true_labels, predictions)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+
+
+recall_per_class = precision_recall_fscore_support(true_labels, predictions, average=None)[1]
+
+recall_pos = recall_per_class[1]  # Per la classe 1
+recall_neg = recall_per_class[0]  # Per la classe 0
+
+print(f"Recall Positiu (classe 1): {recall_pos:.2f}")
+print(f"Recall Negatiu (classe 0): {recall_neg:.2f}")
+
+print("Primeras 50 prediccions:", predictions[:50])
 
